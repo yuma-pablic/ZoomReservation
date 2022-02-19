@@ -27,6 +27,54 @@ type Payload struct {
 type ZoomApi struct {
 	JoinUrl string `json:"join_url"`
 }
+type SlackPayload struct {
+	UserName  string `json:"username"`
+	IconEmoji string `json:"icon_emoji"`
+	Channel   string `json:"channel"`
+	Text      string `json:"text"`
+}
+
+func fetch_daily_person(gas_url string) {
+	req, _ := http.NewRequest("GET", gas_url, nil)
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{ServerName: "script.google.com"},
+	}
+	client := &http.Client{
+		Transport: tr,
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	/* 	encode_res := bufio.NewScanner(transform.NewReader(res.Body, japanese.ShiftJIS.NewEncoder()))
+	 */
+	contents, err := ioutil.ReadAll(res.Body)
+	fmt.Println(string(contents))
+}
+
+func notify_slack(join_url string) {
+	path := os.Getenv("WEBHOOK_URL")
+
+	payload := SlackPayload{
+		UserName:  "デイリーお知らせbot",
+		IconEmoji: ":spiral_calendar_pad",
+		Channel:   "#会議担当者の通知",
+		Text:      "aaa",
+	}
+	json_payload, _ := json.Marshal(payload)
+
+	/* res, err := http.PostForm(path, payload) */
+	req, err := http.NewRequest("POST", path, bytes.NewReader(json_payload))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(resp.StatusCode)
+}
 
 func main() {
 	loadEnv()
@@ -39,7 +87,7 @@ func main() {
 		Agenda:   "進捗報告",
 	}
 	payload_json, _ := json.Marshal(payload)
-	var path = "https://api.zoom.us/v2/users/" + os.Getenv("USER_ID") + "/meetings"
+	path := "https://api.zoom.us/v2/users/" + os.Getenv("USER_ID") + "/meetings"
 
 	connect, _ := http.NewRequest("POST", path, bytes.NewBuffer(payload_json))
 
@@ -56,15 +104,10 @@ func main() {
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, payloadForJwt)
 	tokenString, err := token.SignedString([]byte(os.Getenv("API_SECRET")))
-	if err != nil {
-		log.Fatal(err)
-		fmt.Println("Faild SignIned In")
-	}
+
 	header := http.Header{}
 	header.Set("Content-Type", "application/json")
 	header.Set("Authorization", "Bearer"+tokenString)
-
-	fmt.Println(connect.Header)
 	connect.Header = header
 	req, err := client.Do(connect)
 	if err != nil {
@@ -77,7 +120,9 @@ func main() {
 	join_url := []byte(string(contents))
 	var z ZoomApi
 	json.Unmarshal(join_url, &z)
-	fmt.Println(z.JoinUrl)
+	/* fmt.Println(z.JoinUrl) */
+	fetch_daily_person(os.Getenv("SPREAD_SHEET_URL"))
+	notify_slack(string(join_url))
 }
 
 func loadEnv() {
